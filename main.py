@@ -1,51 +1,35 @@
 import subprocess
-import os
 import logging
 
-# -------------------------
-# Logging setup
-# -------------------------
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[logging.StreamHandler()],
 )
 logger = logging.getLogger(__name__)
 
-# -------------------------
-# Paths
-# -------------------------
-TTS_SCRIPT = "audio.py"       # your TTS generation script
-VIDEO_SCRIPT = "video.py"    # your video generation script
-AUDIO_FILE = "experience.wav"
+AUDIO_SCRIPT = "audio.py"
+VIDEO_SCRIPT = "video.py"
 
-# -------------------------
-# Run TTS script
-# -------------------------
-logger.info("Running TTS script...")
-tts_result = subprocess.run(["python", TTS_SCRIPT])
-if tts_result.returncode != 0:
-    logger.error("TTS script failed! Exiting.")
+# Run audio.py
+logger.info("Running audio.py...")
+result = subprocess.run(
+    ["python", AUDIO_SCRIPT],
+    capture_output=True,
+    text=True,
+)
+if result.returncode != 0:
+    logger.error("audio.py failed!\n%s", result.stderr)
     exit(1)
 
-if not os.path.exists(AUDIO_FILE):
-    logger.error(f"{AUDIO_FILE} not found after TTS script! Exiting.")
-    exit(1)
+# Only take the last line of stdout as the audio file
+audio_file = result.stdout.strip().splitlines()[-1]
+logger.info("Generated audio: %s", audio_file)
 
-# -------------------------
-# Run Video script
-# -------------------------
-logger.info("Running video script...")
-video_result = subprocess.run(["python", VIDEO_SCRIPT, AUDIO_FILE])
+# Run video.py with audio filename
+logger.info("Running video.py...")
+video_result = subprocess.run(["python", VIDEO_SCRIPT, audio_file])
 if video_result.returncode != 0:
-    logger.error("Video script failed! Exiting.")
+    logger.error("video.py failed!")
     exit(1)
 
-# -------------------------
-# Clean up WAV
-# -------------------------
-if os.path.exists(AUDIO_FILE):
-    os.remove(AUDIO_FILE)
-    logger.info(f"Removed temporary audio file: {AUDIO_FILE}")
-
-logger.info("All done!")
+logger.info("Pipeline completed successfully!")

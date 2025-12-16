@@ -1,3 +1,4 @@
+import sys
 from moviepy.editor import VideoClip, AudioFileClip
 import numpy as np
 import logging
@@ -9,16 +10,22 @@ logger = logging.getLogger(__name__)
 # -------------------------
 # Parameters
 # -------------------------
-audio_file = "experience.wav"  # your TTS audio
+if len(sys.argv) < 2:
+    logger.error("Usage: python video.py <audio_file_path>")
+    sys.exit(1)
+
+audio_file = sys.argv[1]  # audio file passed as a parameter
 output_folder = "output"
-output_file = os.path.join(output_folder, "experience_video.mp4")
+
+# Ensure output folder exists
+os.makedirs(output_folder, exist_ok=True)
+
+# Output file uses audio filename as base
+base_name = os.path.splitext(os.path.basename(audio_file))[0]
+output_file = os.path.join(output_folder, f"{base_name}_video.mp4")
+
 fps = 30
 width, height = 720, 720  # square video
-
-# -------------------------
-# Ensure output folder exists
-# -------------------------
-os.makedirs(output_folder, exist_ok=True)
 
 # -------------------------
 # Load audio
@@ -31,10 +38,6 @@ duration = audio_clip.duration
 # Video generator function
 # -------------------------
 def make_frame(t):
-    """
-    Generates a frame at time t.
-    Trippy example: moving sine-based color pattern.
-    """
     x = np.linspace(0, 4*np.pi, width)
     y = np.linspace(0, 4*np.pi, height)
     X, Y = np.meshgrid(x, y)
@@ -69,3 +72,10 @@ video_clip.write_videofile(
 )
 
 logger.info("Video exported successfully!")
+
+# -------------------------
+# Cleanup
+# -------------------------
+if os.path.exists(audio_file):
+    os.remove(audio_file)
+    logger.info(f"Removed temporary audio file: {audio_file}")
