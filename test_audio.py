@@ -14,7 +14,7 @@ male_speakers = [
     "p225", "p226", "p227", "p228", "p229",
     "p230", "p231", "p232", "p233", "p234"
 ]
-speaker = male_speakers[7]  # pick the first male
+speaker = male_speakers[9]  # pick the first male
 
 # -------------------------
 # Sample text
