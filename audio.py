@@ -6,13 +6,9 @@ import numpy as np
 import re
 import logging
 import string
-import os
 import sys
 from urllib.parse import unquote
 import librosa
-
-
-
 
 # -------------------------
 # Logging setup
@@ -29,30 +25,11 @@ load_dotenv()
 # Helpers
 # -------------------------
 def slow_audio(wav, rate=0.9):
-    if not isinstance(wav, np.ndarray):
-        wav = np.asarray(wav, dtype=np.float32)
-
-    # librosa expects mono float32
-    wav = wav.astype(np.float32)
-
+    wav = np.asarray(wav, dtype=np.float32)
     return librosa.effects.time_stretch(wav, rate=rate)
-
 
 def normalize_text(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
-
-def chunk_text(text: str, max_chars: int = 400):
-    sentences = re.split(r'(?<=[.!?])\s+', text)
-    chunks, buf = [], ""
-    for s in sentences:
-        if len(buf) + len(s) <= max_chars:
-            buf += " " + s
-        else:
-            chunks.append(buf.strip())
-            buf = s
-    if buf:
-        chunks.append(buf.strip())
-    return chunks
 
 def silence(seconds: float, sr: int):
     return np.zeros(int(seconds * sr), dtype=np.float32)
@@ -62,16 +39,42 @@ def sanitize_filename(name: str) -> str:
     return "".join(c for c in name if c in valid_chars).replace(" ", "_")
 
 # -------------------------
+# Split text keeping punctuation
+# -------------------------
+def split_with_punctuation(text: str):
+    """
+    Returns list of (text, pause_seconds)
+    """
+    parts = re.findall(r'[^.,!?;:]+[.,!?;:]?', text)
+    result = []
+
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+
+        last_char = part[-1]
+        if last_char in ".!?":
+            pause = 1.0
+        elif last_char in ",;:":
+            pause = 0.3
+        else:
+            pause = 0.3
+
+        result.append((part, pause))
+
+    return result
+
+# -------------------------
 # Check for URL argument
 # -------------------------
 experience_url = None
 if len(sys.argv) > 1:
-    raw_url = sys.argv[1]
-    experience_url = unquote(raw_url)  # decode if URL-encoded
+    experience_url = unquote(sys.argv[1])
     logger.info("Using provided experience URL: %s", experience_url)
 
 # -------------------------
-# Fetch random experience if no URL provided
+# Fetch random experience if no URL
 # -------------------------
 if not experience_url:
     logger.info("Fetching random Erowid experience")
@@ -88,17 +91,13 @@ if not experience_url:
     experience_url = experience["experience"]["url"]
 
 # -------------------------
-# Fetch full experience details
+# Fetch experience details
 # -------------------------
 logger.info("Fetching full experience details")
 url = "https://lysergic.kaizenklass.xyz/api/v1/erowid/experience"
 payload = {"url": experience_url}
-experience_details = requests.post(url, json=payload).json()
-data = experience_details["data"]
+data = requests.post(url, json=payload).json()["data"]
 
-# -------------------------
-# Clean fields
-# -------------------------
 clean_experience = {
     "title": data["title"],
     "username": data["author"],
@@ -108,14 +107,11 @@ clean_experience = {
     "doses": data["doses"],
 }
 
-logger.info("Loaded experience: '%s' by %s", clean_experience["title"], clean_experience["username"])
+logger.info("Loaded experience: '%s' by %s",
+            clean_experience["title"], clean_experience["username"])
 
-# -------------------------
-# Substances ONLY
-# -------------------------
 substances_used = sorted({d["substance"] for d in clean_experience["doses"]})
 substances_text = ", ".join(substances_used)
-logger.info("Substances involved: %s", substances_text)
 
 # -------------------------
 # Build narration script
@@ -132,7 +128,7 @@ and does not encourage illegal activity.
 
 Listener discretion is advised.
 
-{clean_experience['title']}
+{clean_experience['title']}.
 
 This experience was submitted under the username
 {clean_experience['username']}.
@@ -158,16 +154,11 @@ education, preparation, and harm reduction are essential.
 Thank you for listening.
 """
 
-
-# -------------------------
-# Normalize + chunk
-# -------------------------
 clean_text = normalize_text(tts_script)
-chunks = chunk_text(clean_text)
-logger.info("Text normalized and split into %d chunks", len(chunks))
+segments = split_with_punctuation(clean_text)
 
 # -------------------------
-# Load TTS model
+# Load TTS
 # -------------------------
 logger.info("Loading Coqui TTS model")
 tts = TTS(
@@ -176,30 +167,33 @@ tts = TTS(
     gpu=False
 )
 
-speaker = "p232"  # male
-sample_rate = tts.synthesizer.output_sample_rate
+speaker = "p232"
+sr = tts.synthesizer.output_sample_rate
 
 # -------------------------
-# Generate audio
+# Generate audio with pauses
 # -------------------------
 audio_parts = []
-for i, chunk in enumerate(chunks):
-    logger.info("Synthesizing chunk %d/%d", i + 1, len(chunks))
-    wav = tts.tts(text=chunk, speaker=speaker)
-    # wav = slow_audio(wav, rate=0.88) 
+
+for text, pause in segments:
+    logger.info("Speaking: %s", text[:60])
+    wav = tts.tts(text=text, speaker=speaker)
     audio_parts.append(wav)
-    audio_parts.append(silence(0.5, sample_rate))
+    audio_parts.append(silence(pause, sr))
+
+# Extra dramatic pause after title
+audio_parts.insert(
+    segments.index((f"{clean_experience['title']}.", 1.0)) + 1,
+    silence(2.0, sr)
+)
 
 final_audio = np.concatenate(audio_parts)
 
 # -------------------------
-# Save audio with sanitized title
+# Save
 # -------------------------
-audio_filename = sanitize_filename(clean_experience['title']) + ".wav"
-sf.write(audio_filename, final_audio, sample_rate)
+audio_filename = sanitize_filename(clean_experience["title"]) + ".wav"
+sf.write(audio_filename, final_audio, sr)
 logger.info("Saved audio as %s", audio_filename)
 
-# -------------------------
-# Print the filename for the runner
-# -------------------------
 print(audio_filename)
