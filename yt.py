@@ -43,7 +43,9 @@ def upload_video(video_path, title, playlist_id=None):
             "description": (
                 "Narrated psychoactive experience report.\n\n"
                 "Source: Erowid.org\n"
-                "Educational & harm reduction purposes only."
+                "Educational & harm reduction purposes only.\n\n"
+                "Generated using The Lysergic Dream Engine: https://github.com/ik04/lysergic-dream-engine\n"
+                "Checkout more experiences at https://lysergic.vercel.app/"
             ),
             "tags": [
                 "trip report",
