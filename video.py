@@ -49,7 +49,7 @@ video_clip = video_clip.loop(n=loops).subclip(0, tts_clip.duration)
 # Loop music to match TTS duration
 # -------------------------
 music_clip = audio_loop(music_clip, duration=tts_clip.duration)
-music_clip = volumex(music_clip, 0.1)  # Lower music volume
+music_clip = volumex(music_clip, 0.05)  # Lower music volume
 
 # -------------------------
 # Overlay audio
