@@ -85,6 +85,7 @@ if not experience_url:
             "https://www.erowid.org/chemicals/lsd/lsd.shtml",
             "https://www.erowid.org/plants/salvia/salvia.shtml",
             "https://www.erowid.org/plants/cannabis/cannabis.shtml",
+            "https://www.erowid.org/chemicals/mdma/mdma.shtml"
         ]
     }
     experience = requests.post(url, json=substances).json()
