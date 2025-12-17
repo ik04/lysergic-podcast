@@ -79,3 +79,8 @@ logger.info("Video exported successfully!")
 if os.path.exists(audio_file):
     os.remove(audio_file)
     logger.info(f"Removed temporary audio file: {audio_file}")
+
+# -------------------------
+# Output for runner
+# -------------------------
+print(output_file)
