@@ -3,6 +3,7 @@ import os
 import logging
 from moviepy.editor import VideoFileClip, AudioFileClip, CompositeAudioClip
 from moviepy.audio.fx.all import volumex, audio_loop
+import random
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -14,9 +15,12 @@ if len(sys.argv) < 2:
     logger.error("Usage: python video.py <tts_audio_file>")
     sys.exit(1)
 
+random_music_index = random.randint(1, 8)
+random_clip_index = random.randint(1, 5)
+
 tts_audio_file = sys.argv[1]  # TTS audio
-music_file = "music/1.mp3"    # Background music
-clip_file = "clips/1.mp4"     # Video clip
+music_file = f"music/{random_music_index}.mp3"    # Background music
+clip_file = f"clips/1.mp4"     # Video clip
 
 output_folder = "output"
 os.makedirs(output_folder, exist_ok=True)
