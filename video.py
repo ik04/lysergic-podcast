@@ -1,8 +1,8 @@
 import sys
-from moviepy.editor import VideoClip, AudioFileClip
-import numpy as np
-import logging
 import os
+import logging
+from moviepy.editor import VideoFileClip, AudioFileClip, CompositeAudioClip
+from moviepy.audio.fx.all import volumex, audio_loop
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -11,58 +11,52 @@ logger = logging.getLogger(__name__)
 # Parameters
 # -------------------------
 if len(sys.argv) < 2:
-    logger.error("Usage: python video.py <audio_file_path>")
+    logger.error("Usage: python video.py <tts_audio_file>")
     sys.exit(1)
 
-audio_file = sys.argv[1]  # audio file passed as a parameter
+tts_audio_file = sys.argv[1]  # TTS audio
+music_file = "music/1.mp3"    # Background music
+clip_file = "clips/1.mp4"     # Video clip
+
 output_folder = "output"
-
-# Ensure output folder exists
 os.makedirs(output_folder, exist_ok=True)
-
-# Output file uses audio filename as base
-base_name = os.path.splitext(os.path.basename(audio_file))[0]
+base_name = os.path.splitext(os.path.basename(tts_audio_file))[0]
 output_file = os.path.join(output_folder, f"{base_name}.mp4")
 
-fps = 30
-width, height = 720, 720  # square video
+# -------------------------
+# Load clips
+# -------------------------
+logger.info("Loading TTS audio: %s", tts_audio_file)
+tts_clip = AudioFileClip(tts_audio_file)
+
+logger.info("Loading background music: %s", music_file)
+music_clip = AudioFileClip(music_file)
+
+logger.info("Loading video clip: %s", clip_file)
+video_clip = VideoFileClip(clip_file)
 
 # -------------------------
-# Load audio
+# Loop video clip to match TTS duration
 # -------------------------
-logger.info("Loading audio: %s", audio_file)
-audio_clip = AudioFileClip(audio_file)
-duration = audio_clip.duration
+loops = int(tts_clip.duration // video_clip.duration) + 1
+video_clip = video_clip.loop(n=loops).subclip(0, tts_clip.duration)
 
 # -------------------------
-# Video generator function
+# Loop music to match TTS duration
 # -------------------------
-def make_frame(t):
-    x = np.linspace(0, 4*np.pi, width)
-    y = np.linspace(0, 4*np.pi, height)
-    X, Y = np.meshgrid(x, y)
-    R = np.sin(X + t*3) + np.cos(Y + t*2)
-    G = np.cos(X + t*2) + np.sin(Y + t*3)
-    B = np.sin(X + Y + t*2)
-    frame = np.stack([
-        ((R + 2)/4 * 255),
-        ((G + 2)/4 * 255),
-        ((B + 2)/4 * 255)
-    ], axis=2).astype(np.uint8)
-    return frame
+music_clip = audio_loop(music_clip, duration=tts_clip.duration)
+music_clip = volumex(music_clip, 0.1)  # Lower music volume
 
 # -------------------------
-# Create video clip
+# Overlay audio
 # -------------------------
-logger.info("Creating video clip (duration: %.2fs)", duration)
-video_clip = VideoClip(make_frame, duration=duration)
-video_clip = video_clip.set_audio(audio_clip)
-video_clip = video_clip.set_fps(fps)
+combined_audio = CompositeAudioClip([music_clip, tts_clip])
+video_clip = video_clip.set_audio(combined_audio)
 
 # -------------------------
 # Export
 # -------------------------
-logger.info("Exporting video to %s", output_file)
+logger.info("Exporting final video to %s", output_file)
 video_clip.write_videofile(
     output_file,
     codec="libx264",
@@ -76,9 +70,9 @@ logger.info("Video exported successfully!")
 # -------------------------
 # Cleanup
 # -------------------------
-if os.path.exists(audio_file):
-    os.remove(audio_file)
-    logger.info(f"Removed temporary audio file: {audio_file}")
+if os.path.exists(tts_audio_file):
+    os.remove(tts_audio_file)
+    logger.info(f"Removed temporary audio file: {tts_audio_file}")
 
 # -------------------------
 # Output for runner

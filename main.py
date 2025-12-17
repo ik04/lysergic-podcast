@@ -12,8 +12,17 @@ AUDIO_SCRIPT = "audio.py"
 VIDEO_SCRIPT = "video.py"
 YT_SCRIPT = "yt.py"
 
-# Optional experience URL argument
-experience_url = sys.argv[1] if len(sys.argv) > 1 else None
+# -------------------------
+# Parse arguments
+# -------------------------
+experience_url = None
+auto_upload = False
+
+for arg in sys.argv[1:]:
+    if arg == "-y":
+        auto_upload = True
+    else:
+        experience_url = arg
 
 # -------------------------
 # Run audio.py
@@ -28,7 +37,6 @@ if result.returncode != 0:
     logger.error("audio.py failed!\n%s", result.stderr)
     exit(1)
 
-# Only take the last line of stdout as the audio file
 audio_file = result.stdout.strip().splitlines()[-1]
 logger.info("Generated audio: %s", audio_file)
 
@@ -38,28 +46,32 @@ logger.info("Generated audio: %s", audio_file)
 logger.info("Running video.py...")
 video_result = subprocess.run(
     ["python", VIDEO_SCRIPT, audio_file],
-    capture_output=True,  # <-- important
-    text=True              # <-- important
+    capture_output=True,
+    text=True
 )
 if video_result.returncode != 0:
     logger.error("video.py failed!\n%s", video_result.stderr)
     exit(1)
 
-# Only take the last line of stdout as the video file
 video_file = video_result.stdout.strip().splitlines()[-1]
 logger.info("Generated video: %s", video_file)
 
 # -------------------------
-# Upload to YouTube
+# YouTube upload
 # -------------------------
-logger.info("Uploading to YouTube...")
-
 PLAYLIST_ID = "PL6-XViE7MT_Br2si0sy6AHk_omwmj9q4G"
 
+if not auto_upload:
+    answer = input("Upload video to YouTube? [y/n]: ").strip().lower()
+    if answer != "y":
+        logger.info("Upload cancelled.")
+        exit(0)
+
+logger.info("Uploading to YouTube...")
 yt_result = subprocess.run([
     "python",
     YT_SCRIPT,
-    video_file,  # the video file path from video.py
+    video_file,
     PLAYLIST_ID
 ], capture_output=True, text=True)
 
