@@ -5,6 +5,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
 
 logging.basicConfig(
     level=logging.INFO,
@@ -20,10 +21,20 @@ TOKEN_FILE = "youtube_token.json"
 def get_youtube():
     creds = None
 
+    # Load existing token
     if os.path.exists(TOKEN_FILE):
         creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
 
+    # Refresh token if expired
+    if creds and creds.expired and creds.refresh_token:
+        logger.info("Refreshing YouTube access token")
+        creds.refresh(Request())
+        with open(TOKEN_FILE, "w") as f:
+            f.write(creds.to_json())
+
+    # Full re-auth only if needed
     if not creds or not creds.valid:
+        logger.info("Starting browser authentication flow")
         flow = InstalledAppFlow.from_client_secrets_file(
             CLIENT_SECRETS, SCOPES
         )
@@ -60,7 +71,7 @@ def upload_video(video_path, title, playlist_id=None):
                 "cannabis",
                 "mdma"
             ],
-            "categoryId": "22",  # People & Blogs
+            "categoryId": "22",
         },
         "status": {
             "privacyStatus": "public",
