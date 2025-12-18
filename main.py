@@ -9,6 +9,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 AUDIO_SCRIPT = "audio.py"
+GEMINI_AUDIO_SCRIPT = "audio_gemini.py"
 VIDEO_SCRIPT = "video.py"
 YT_SCRIPT = "yt.py"
 
@@ -17,31 +18,40 @@ YT_SCRIPT = "yt.py"
 # -------------------------
 experience_url = None
 auto_upload = False
+use_gemini = False
 
 for arg in sys.argv[1:]:
     if arg == "-y":
         auto_upload = True
+    elif arg == "-g":
+        use_gemini = True
     else:
         experience_url = arg
 
 # -------------------------
-# Run audio.py
+# Choose audio script
 # -------------------------
-logger.info("Running audio.py...")
-cmd = ["python", AUDIO_SCRIPT]
+audio_script = GEMINI_AUDIO_SCRIPT if use_gemini else AUDIO_SCRIPT
+logger.info("Running %s...", audio_script)
+
+cmd = ["python", audio_script]
 if experience_url:
     cmd.append(experience_url)
 
+# -------------------------
+# Run audio script
+# -------------------------
 try:
     result = subprocess.run(cmd, check=True, text=True, stdout=subprocess.PIPE)
 except subprocess.CalledProcessError:
-    logger.error("audio.py failed!")
+    logger.error("%s failed!", audio_script)
     sys.exit(1)
 
 output = result.stdout.strip().splitlines()[-1]
 audio_file, primary_substance = output.split("|", 1)
 
 logger.info("Generated audio: %s", audio_file)
+logger.info("Primary substance: %s", primary_substance)
 
 # -------------------------
 # Run video.py
