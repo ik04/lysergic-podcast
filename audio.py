@@ -35,6 +35,10 @@ def sanitize_filename(name: str) -> str:
     return "".join(c for c in name if c in valid_chars).replace(" ", "_")
 
 def split_with_punctuation(text: str):
+    """
+    Returns list of (text, pause_seconds)
+    Breathing toned down
+    """
     parts = re.findall(r'[^.,!?;:]+[.,!?;:]?', text)
     result = []
 
@@ -44,41 +48,63 @@ def split_with_punctuation(text: str):
             continue
 
         last_char = part[-1]
-        pause = 1.0 if last_char in ".!?" else 0.3
+        if last_char in ".!?":
+            pause = 0.6
+        elif last_char in ",;:":
+            pause = 0.15
+        else:
+            pause = 0.15
+
         result.append((part, pause))
 
     return result
 
 # -------------------------
-# Substance frequency detection (with aliases)
+# Substance detection
 # -------------------------
-SUBSTANCE_ALIASES = {
-    "LSD": ["lsd"],
-    "DMT": ["dmt"],
-    "Salvia": ["salvia"],
-    "MDMA": ["mdma", "ecstasy", "molly"],
-    "Cannabis": ["cannabis", "weed", "marijuana", "pot"],
-    "Heroin": ["heroin"],
-    "Cocaine": ["cocaine", "coke"],
-    "Ketamine": ["ketamine", "ket"],
-}
+SUBSTANCES = [
+    "LSD",
+    "DMT",
+    "Salvia",
+    "MDMA",
+    "Cannabis",
+    "Heroin",
+    "Cocaine",
+    "Ketamine",
+]
 
-def detect_primary_substance(text: str) -> str:
-    text_lower = text.lower()
+def detect_primary_substance(content: str, doses: list) -> str:
     counts = Counter()
+    text_lower = content.lower()
 
-    for substance, aliases in SUBSTANCE_ALIASES.items():
-        for alias in aliases:
-            pattern = rf"\b{alias}\b"
-            matches = re.findall(pattern, text_lower)
-            if matches:
-                counts[substance] += len(matches)
+    # Count mentions in content
+    for substance in SUBSTANCES:
+        matches = re.findall(rf"\b{substance.lower()}\b", text_lower)
+        if matches:
+            counts[substance] += len(matches)
 
-    if not counts:
-        return "Unknown"
+    # Count substances from doses
+    dose_substances = []
+    for d in doses:
+        sub = d.get("substance")
+        if sub:
+            dose_substances.append(sub)
+            if sub in SUBSTANCES:
+                counts[sub] += 2  # weighted higher than text
 
-    logger.info("Substance frequency: %s", dict(counts))
-    return counts.most_common(1)[0][0]
+    unique_substances = set(dose_substances)
+
+    # If exactly one substance exists overall, pick it
+    if len(unique_substances) == 1:
+        only = unique_substances.pop()
+        logger.info("Single substance detected from doses: %s", only)
+        return only
+
+    if counts:
+        logger.info("Substance frequency (content + doses): %s", dict(counts))
+        return counts.most_common(1)[0][0]
+
+    return "Unknown"
 
 # -------------------------
 # Check for URL argument
@@ -135,21 +161,18 @@ logger.info(
 )
 
 # -------------------------
-# Detect primary substance (with fallback)
+# Detect primary substance
 # -------------------------
-primary_substance = detect_primary_substance(clean_experience["content"])
-
-if primary_substance == "Unknown" and clean_experience["doses"]:
-    primary_substance = clean_experience["doses"][0]["substance"]
-    logger.info("Frequency detection failed, fallback to dose metadata")
+primary_substance = detect_primary_substance(
+    clean_experience["content"],
+    clean_experience["doses"]
+)
 
 logger.info("Primary substance detected: %s", primary_substance)
 
 # -------------------------
 # Build narration script
 # -------------------------
-article = "an" if primary_substance in ["LSD", "MDMA"] else "a"
-
 tts_script = f"""
 Welcome.
 
@@ -163,7 +186,7 @@ Listener discretion is advised.
 
 {clean_experience['title']}.
 
-{article} {primary_substance} Trip Report.
+{("an" if primary_substance in ["LSD", "MDMA"] else "a")} {primary_substance} Trip Report.
 
 This experience was submitted under the username
 {clean_experience['username']}.
@@ -195,20 +218,18 @@ speaker = "p232"
 sr = tts.synthesizer.output_sample_rate
 
 # -------------------------
-# Generate audio (DEDUP UPGRADE)
+# Generate audio (DEDUP)
 # -------------------------
 audio_parts = []
 last_spoken = None
 
 for text, pause in segments:
     normalized = normalize_text(text).lower()
-
     if normalized == last_spoken:
         logger.warning("Skipping duplicate segment: %s", text[:60])
         continue
 
     last_spoken = normalized
-
     logger.info("Speaking: %s", text[:60])
     wav = tts.tts(text=text, speaker=speaker)
     audio_parts.append(wav)
