@@ -59,6 +59,13 @@ def split_with_punctuation(text: str):
 
     return result
 
+def format_timestamp(seconds: float) -> str:
+    ms = int((seconds % 1) * 1000)
+    s = int(seconds) % 60
+    m = (int(seconds) // 60) % 60
+    h = int(seconds) // 3600
+    return f"{h:02}:{m:02}:{s:02},{ms:03}"
+
 # -------------------------
 # Substance detection
 # -------------------------
@@ -83,18 +90,17 @@ def detect_primary_substance(content: str, doses: list) -> str:
         if matches:
             counts[substance] += len(matches)
 
-    # Count substances from doses
+    # Count substances from doses (weighted)
     dose_substances = []
     for d in doses:
         sub = d.get("substance")
         if sub:
             dose_substances.append(sub)
             if sub in SUBSTANCES:
-                counts[sub] += 2  # weighted higher than text
+                counts[sub] += 2
 
     unique_substances = set(dose_substances)
 
-    # If exactly one substance exists overall, pick it
     if len(unique_substances) == 1:
         only = unique_substances.pop()
         logger.info("Single substance detected from doses: %s", only)
@@ -107,7 +113,7 @@ def detect_primary_substance(content: str, doses: list) -> str:
     return "Unknown"
 
 # -------------------------
-# Check for URL argument
+# Parse experience URL
 # -------------------------
 experience_url = None
 if len(sys.argv) > 1:
@@ -167,7 +173,6 @@ primary_substance = detect_primary_substance(
     clean_experience["content"],
     clean_experience["doses"]
 )
-
 logger.info("Primary substance detected: %s", primary_substance)
 
 # -------------------------
@@ -201,8 +206,7 @@ I hope you found this experience report informative and enjoyable.
 Thank you for listening.
 """
 
-clean_text = normalize_text(tts_script)
-segments = split_with_punctuation(clean_text)
+segments = split_with_punctuation(normalize_text(tts_script))
 
 # -------------------------
 # Load TTS
@@ -218,10 +222,13 @@ speaker = "p232"
 sr = tts.synthesizer.output_sample_rate
 
 # -------------------------
-# Generate audio (DEDUP)
+# Generate audio + subtitles
 # -------------------------
 audio_parts = []
+subtitles = []
+current_time = 0.0
 last_spoken = None
+subtitle_index = 1
 
 for text, pause in segments:
     normalized = normalize_text(text).lower()
@@ -231,20 +238,46 @@ for text, pause in segments:
 
     last_spoken = normalized
     logger.info("Speaking: %s", text[:60])
+
     wav = tts.tts(text=text, speaker=speaker)
+    duration = len(wav) / sr
+
+    start = current_time
+    end = start + duration
+
+    subtitles.append(
+        f"{subtitle_index}\n"
+        f"{format_timestamp(start)} --> {format_timestamp(end)}\n"
+        f"{text}\n"
+    )
+
+    subtitle_index += 1
+    current_time = end
+
     audio_parts.append(wav)
-    audio_parts.append(silence(pause, sr))
+
+    if pause > 0:
+        audio_parts.append(silence(pause, sr))
+        current_time += pause
 
 final_audio = np.concatenate(audio_parts)
 
 # -------------------------
-# Save
+# Save outputs
 # -------------------------
-audio_filename = sanitize_filename(clean_experience["title"]) + ".wav"
+base_filename = sanitize_filename(clean_experience["title"])
+audio_filename = f"{base_filename}.wav"
+subtitle_filename = f"{base_filename}.srt"
+
 sf.write(audio_filename, final_audio, sr)
+
+with open(subtitle_filename, "w", encoding="utf-8") as f:
+    f.write("\n".join(subtitles))
+
 logger.info("Saved audio as %s", audio_filename)
+logger.info("Saved subtitles as %s", subtitle_filename)
 
 # -------------------------
 # Output for pipeline
 # -------------------------
-print(f"{audio_filename}|{primary_substance}")
+print(f"{audio_filename}|{subtitle_filename}|{primary_substance}")
